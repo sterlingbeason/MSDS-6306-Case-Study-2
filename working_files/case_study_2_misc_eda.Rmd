@@ -1,0 +1,143 @@
+---
+title: 'Doing Data Science: Case Study 2'
+author: "Sterling Beason"
+date: "12/2/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(GGally)
+library(ggplot2)
+library(corrplot)
+library(Hmisc)
+library(randomForest)
+library(earth) # identify predictors
+```
+
+# EDA - Attrition Data
+## Import Data
+```{r}
+dataRaw = read.csv('../data/CaseStudy2-data.csv', header = TRUE)
+
+dim(dataRaw)
+
+#describe(dataRaw)
+
+# Non-informative columns: ID, EmployeeNumber
+# Useless columns with one value: EmployeeCount, Over18, StandardHours
+
+data = dataRaw %>% select(-c('ID', 'EmployeeNumber', 'EmployeeCount', 'Over18', 'StandardHours'))
+
+
+dim(data)
+
+str(data)
+
+# convert factors that were picked up as int
+data$EnvironmentSatisfaction <- factor(data$EnvironmentSatisfaction)
+data$JobInvolvement <- factor(data$JobInvolvement)
+data$JobLevel <- factor(data$JobLevel)
+data$JobSatisfaction <- factor(data$JobSatisfaction)
+data$PerformanceRating <- factor(data$PerformanceRating)
+data$RelationshipSatisfaction <- factor(data$RelationshipSatisfaction)
+data$WorkLifeBalance <- factor(data$WorkLifeBalance)
+data$StockOptionLevel <- factor(data$StockOptionLevel)
+
+summary(data)
+
+head(data)
+
+names(data)
+
+categoricalCols = data %>% select_if(is.factor)
+
+dim(categoricalCols)
+
+continuousCols = data %>% select_if(is.numeric)
+
+dim(continuousCols)
+
+# numeric correlations
+
+continuousCols.cor = cor(continuousCols)
+
+corrplot(continuousCols.cor)
+
+```
+
+## Misc Plots
+```{r}
+data %>% ggplot(aes(Attrition, fill = Attrition)) + geom_bar(stat = "count")
+```
+
+## Explore Continuous Columns
+```{r}
+
+#ggpairs(data, columns=names(continuousCols[, 1:4]), mapping = ggplot2::aes(colour=Attrition))
+#ggpairs(data, columns=names(continuousCols[, 5:9]), mapping = ggplot2::aes(colour=Attrition))
+#ggpairs(data, columns=names(continuousCols[, 10:14]), mapping = ggplot2::aes(colour=Attrition))
+#ggpairs(data, columns=names(continuousCols[, 15:19]), mapping = ggplot2::aes(colour=Attrition))
+```
+
+## Random Forest
+```{r}
+output.rf <- randomForest(Attrition ~ ., data = data)
+
+# view results
+print(output.rf) 
+
+# predictor/variable importance
+print(importance(output.rf,type = 2))
+
+plot(output.rf)
+
+
+```
+
+## Identify top three predictors (Attrition)
+### Test All Predictors
+```{r}
+mars <- earth(Attrition ~ ., data = data)
+evimp <- evimp(mars)
+
+evimp
+
+plot(evimp) # plot
+
+# OverTime + YearsWithCurrManager + Age
+
+data %>% select('OverTime', 'YearsWithCurrManager', 'Age', 'Attrition') %>% ggpairs(mapping = ggplot2::aes(colour=Attrition))
+```
+
+### Test Numeric Predictors
+```{r}
+continuousColsWAttrition = continuousCols
+continuousColsWAttrition$Attrition <- data$Attrition
+
+mars <- earth(Attrition ~ ., data = continuousColsWAttrition)
+evimp <- evimp(mars)
+
+evimp
+```
+
+### Visualize
+```{r}
+# OverTime + YearsWithCurrManager + StockOptionLevel
+
+data %>% select('TotalWorkingYears', 'NumCompaniesWorked', 'YearsSinceLastPromotion', 'Attrition') %>% ggpairs(mapping = ggplot2::aes(colour=Attrition))
+```
+
+## Identify top three predictors (MonthlyIncome)
+```{r}
+mars2 <- earth(MonthlyIncome ~ ., data = data)
+evimp2 <- evimp(mars2)
+
+evimp2
+
+plot(evimp2) # plot
+
+```
+

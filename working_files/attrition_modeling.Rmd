@@ -1,0 +1,119 @@
+---
+title: "Attrition - Modeling"
+author: "Sterling Beason"
+date: "12/4/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(class)
+library(caret)
+library(e1071)
+library(tidyverse)
+```
+
+```{r}
+dataRaw = read.csv('../data/CaseStudy2-data.csv', header = TRUE)
+
+# Non-informative columns: ID, EmployeeNumber
+# Useless columns with one value: EmployeeCount, Over18, StandardHours
+data = dataRaw %>% select(-c('ID', 'EmployeeNumber', 'EmployeeCount', 'Over18', 'StandardHours'))
+```
+
+## Data Partitioning (Train/Test)
+```{r}
+# split data into training and testing
+trainInd = createDataPartition(data$Attrition, times = 1, p = 0.75, list = FALSE)
+
+train = data[trainInd,]
+test = data[-trainInd,]
+
+dim(train)
+dim(test)
+```
+
+### Naive Bayes  - All Predictors
+```{r}
+model <- naiveBayes(Attrition ~ ., data = train)
+
+pred <- predict(model, test)
+
+# confusion Matrix
+confusionMatrix(table(pred, test$Attrition))
+
+```
+
+### ~~Naive Bayes - Top Three (numeric) Predictors~~
+Note: Top three of all predictors was resulting in zero-frequency issue. (OverTime + YearsWithCurrManager + StockOptionLevel) EDIT: so are the numeric...
+
+Top three predictors identified in EDA using the MARS algorithm.
+```{r}
+modelReduced <- naiveBayes(Attrition ~ TotalWorkingYears + NumCompaniesWorked + YearsSinceLastPromotion, data = train)
+
+predReduced <- predict(modelReduced, test)
+
+confusionMatrix(table(predReduced, test$Attrition))
+
+```
+
+#### Lets try this with kNN
+##### Identify best k
+```{r, eval = FALSE}
+set.seed(1432)
+iterations = 250
+numks = 60
+splitPerc = .8
+
+masterAcc = matrix(nrow = iterations, ncol = numks)
+
+dataKnn <- data %>% select('Attrition', 'TotalWorkingYears', 'NumCompaniesWorked', 'YearsSinceLastPromotion')
+
+for(j in 1:iterations)
+{
+  trainIndices = createDataPartition(dataKnn$Attrition, times = 1, p = splitPerc, list = FALSE)
+  trainKnn = dataKnn[trainIndices,]
+  testKnn = dataKnn[-trainIndices,]
+  for(i in 1:numks)
+  {
+    classifications = knn(trainKnn[,2:4],testKnn[,2:4],trainKnn$Attrition, prob = TRUE, k = i)
+    table(classifications,testKnn$Attrition)
+    CM = confusionMatrix(table(classifications,testKnn$Attrition))
+    masterAcc[j,i] = CM$overall[1]
+  }
+  
+}
+
+MeanAcc = colMeans(masterAcc)
+
+plot(seq(1,numks,1),MeanAcc, type = "l")
+
+which.max(MeanAcc)
+max(MeanAcc)
+
+```
+
+##### Run kNN with best K
+```{r}
+trainReduced <- train %>% select('Attrition', 'TotalWorkingYears', 'NumCompaniesWorked', 'YearsSinceLastPromotion')
+testReduced <- test %>% select('Attrition', 'TotalWorkingYears', 'NumCompaniesWorked', 'YearsSinceLastPromotion')
+
+knn <- knn(trainReduced[,2:4], testReduced[,2:4], trainReduced$Attrition, prob = TRUE, k = 8)
+
+confusionMatrix(table(knn, testReduced$Attrition))
+```
+
+```{r}
+trainNum <- train %>% select_if(is.numeric)
+testNum <- test %>% select_if(is.numeric)
+
+trainNum$Attrition <- train$Attrition
+testNum$Attrition <- test$Attrition
+
+names(trainNum)
+
+knn <- knn(trainNum[,1:23], testNum[,1:23], trainNum$Attrition, prob = TRUE, k = 8)
+
+confusionMatrix(table(knn, testNum$Attrition))
+```

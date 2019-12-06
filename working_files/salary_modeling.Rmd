@@ -1,0 +1,152 @@
+---
+title: "Salary - Modeling"
+author: "Sterling Beason"
+date: "12/4/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(caret)
+#library(e1071)
+library(Metrics) # rsme
+library(randomForest)
+```
+
+```{r}
+dataRaw = read.csv('../data/CaseStudy2-data.csv', header = TRUE)
+
+# Non-informative columns: ID, EmployeeNumber
+# Useless columns with one value: EmployeeCount, Over18, StandardHours
+data = dataRaw %>% select(-c('ID', 'EmployeeNumber', 'EmployeeCount', 'Over18', 'StandardHours'))
+
+# convert factors that were picked up as int
+data$EnvironmentSatisfaction <- factor(data$EnvironmentSatisfaction)
+data$JobInvolvement <- factor(data$JobInvolvement)
+data$JobLevel <- factor(data$JobLevel)
+data$JobSatisfaction <- factor(data$JobSatisfaction)
+data$PerformanceRating <- factor(data$PerformanceRating)
+data$RelationshipSatisfaction <- factor(data$RelationshipSatisfaction)
+data$WorkLifeBalance <- factor(data$WorkLifeBalance)
+data$StockOptionLevel <- factor(data$StockOptionLevel)
+```
+
+## Monthly Income Histogram
+```{r}
+hist(data$MonthlyIncome, col = 'blue', main="MonthlyIncome Distribution")
+
+```
+
+## Multiple Linear Regression
+### Data Partitioning (Train/Test)
+```{r}
+# split data into training and testing
+trainInd = createDataPartition(data$Attrition, times = 1, p = 0.75, list = FALSE)
+
+train = data[trainInd,]
+test = data[-trainInd,]
+
+dim(train)
+dim(test)
+```
+
+## Train > Test > ?
+```{r}
+model <- lm(MonthlyIncome ~ ., data = train)
+
+summary(model)
+
+model.fit <- predict(model, newdata = test)
+
+plot(model.fit,test$MonthlyIncome, xlab="predicted", ylab="actual")
+abline(a=0,b=1)
+
+# Mean Square Prediction Error (MSPE)
+MSPE = mean((test$MonthlyIncome - model.fit)^2)
+MSPE
+
+# RMSE
+rmse(test$MonthlyIncome, model.fit)
+
+```
+
+## Model 2 - Top three predictors
+```{r}
+# The three predictors varified by step-wise algo. in Model 4
+model2 <- lm(MonthlyIncome ~ JobLevel + JobRole + TotalWorkingYears, data = train)
+
+summary(model2)
+
+hist(model2$residuals, col = "blue", main = "Histogram of Residuals")
+plot(model2$fitted.values,model2$residuals, main = "Plot of Residuals v. Fitted Values")
+abline(a=0, b=0)
+
+
+model2.fit <- predict(model2, newdata = test)
+
+plot(model2.fit,test$MonthlyIncome, xlab="predicted", ylab="actual")
+abline(a=0,b=1)
+
+par(mfrow = c(2, 2))
+plot(model2.fit)
+
+MSPE = mean((test$MonthlyIncome - model2.fit)^2)
+MSPE
+
+#RSME from Metrics:: (https://www.rdocumentation.org/packages/Metrics/versions/0.1.4/topics/rmse)
+rmse(test$MonthlyIncome, model2.fit)
+
+#RMSE (alt.)
+summary(model2)$sigma
+```
+
+## Model 3 - log(MonthlyIncome)
+```{r}
+model3 <- lm(MonthlyIncome ~ JobLevel + JobRole + TotalWorkingYears, data = train)
+
+summary(model2)
+
+hist(log(model3$residuals), col = "blue", main = "Histogram of Residuals")
+plot(log(model3$fitted.values),log(model3$residuals), main = "Plot of Residuals v. Fitted Values")
+abline(a=0, b=0)
+
+# RMSE
+summary(model3)$sigma
+```
+
+
+## Model 4 - Random Forest
+```{r}
+output.rf <- randomForest(MonthlyIncome ~ ., data = data)
+
+# view results
+print(output.rf) 
+
+# predictor/variable importance
+print(importance(output.rf,type = 2))
+
+plot(output.rf)
+
+#RMSE
+rmse(data$MonthlyIncome, output.rf$predicted)
+
+```
+
+## Model 5 - Step-wise Regression
+```{r}
+# Adapted Source: http://r-statistics.co/Variable-Selection-and-Importance-With-R.html
+
+base.mod <- lm(MonthlyIncome ~ 1 , data= data)  # base intercept only model
+all.mod <- lm(MonthlyIncome ~ . , data= data) # full model with all predictors
+stepMod <- step(base.mod, scope = list(lower = base.mod, upper = all.mod), direction = "both", trace = 0, steps = 1000)  # perform step-wise algorithm
+shortlistedVars <- names(unlist(stepMod[[1]])) # get the shortlisted variable.
+shortlistedVars <- shortlistedVars[!shortlistedVars %in% "(Intercept)"]  # remove intercept 
+print(shortlistedVars)
+```
+
+According to step-wise, top three variables are JobLevel, JobRole, TotalWorkingYears.
+
+
+
