@@ -22,8 +22,34 @@ library(Metrics) # rsme
 ```
 
 ## Executive Summary
+DDSAnalytics is an analytics company that specializes in talent management solututions for Fortune 100 companies. Frito Lay has contracted DDSAnalytics to analyze and build models for employee attrition and monthly income (salary). It is our privilege to present our findings to the CEO and CFO of Frito Lay.
+The dataset provided by your company included 870 observations with 36 features. We constructed models to best predict attrition and monthly income with several different industry standard algorithms: naive Bayes, kNN, and multiple linear regression. Using multiple feature selection techniques; such as, Random Forest, Multivariate Adaptive Regression (MARS), and step-wize regression.
+
+Top Three Predictors for Attrition: [see visuals](#identify-top-three-attrition-predictors)
+
+* Overtime
+
+* Years With Current Manager
+
+* Age
+
+Our best model for attrition utilized the naive Bayes algorithm with all predictors. With this model, we achieved an accuracy of ~84%, sensitivity of nearly 90%, and a specificity greater than 60%. [see more](#naive-bayes---all-predictors-(best))
+
+Top Three Predictors for Monthly Income: [see visuals](#top-three-salary-predictors)
+
+* Job Level
+
+* Job Role
+
+* Total Working Years
+
+With a root mean square deviation (RSME) of less than $1k, our best model utilized multiple linear regression using the top three predictors we identified. [see more](#top-three-features---mlr-(best))
+
+Along with this report, we are pleased to provide back our attrition and salary predictions for the non-labeled datasets "CaseStudy2CompSet No Attrition.csv" and "CaseStudy2CompSet No Salary.csv". You can find these now labeled dataset files in the "prediction" folder accompanied by this report.
 
 ## Dataset
+**CaseStudy2-data.csv**
+
 870 observations, 36 features
 
 | Name | - | Used |
@@ -90,13 +116,15 @@ categoricalCols = data %>% select_if(is.factor)
 continuousCols = data %>% select_if(is.numeric)
 ```
 
-### Visualize numeric correlations
+### Visualize Numeric Correlations
 ```{r}
 continuousCols.cor = cor(continuousCols)
 corrplot(continuousCols.cor)
 ```
 
-### Identify Top Three Predictors
+## Attrition Modeling
+
+### Identify Top Three Attrition Predictors
 #### Within All Predictors
 ```{r}
 mars <- earth(Attrition ~ ., data = data)
@@ -117,8 +145,6 @@ evimp[1:3, c(3,4,6)]
 
 data %>% select('TotalWorkingYears', 'NumCompaniesWorked', 'YearsSinceLastPromotion', 'Attrition') %>% ggpairs(mapping = ggplot2::aes(colour=Attrition))
 ```
-
-## Attrition Modeling
 
 ### Data Partitioning (Train/Test)
 ```{r}
@@ -141,6 +167,30 @@ pred <- predict(model, test)
 confusionMatrix(table(pred, test$Attrition))
 ```
 
+```{r, include=FALSE}
+# import non-labeled dataset and export predictions
+attritionNonLabeled = read.csv('./data/CaseStudy2CompSet No Attrition.csv', header = TRUE)
+
+# convert factors that were picked up as int
+attritionNonLabeled$EnvironmentSatisfaction <- factor(attritionNonLabeled$EnvironmentSatisfaction)
+attritionNonLabeled$JobInvolvement <- factor(attritionNonLabeled$JobInvolvement)
+attritionNonLabeled$JobLevel <- factor(attritionNonLabeled$JobLevel)
+attritionNonLabeled$JobSatisfaction <- factor(attritionNonLabeled$JobSatisfaction)
+attritionNonLabeled$PerformanceRating <- factor(attritionNonLabeled$PerformanceRating)
+attritionNonLabeled$RelationshipSatisfaction <- factor(attritionNonLabeled$RelationshipSatisfaction)
+attritionNonLabeled$WorkLifeBalance <- factor(attritionNonLabeled$WorkLifeBalance)
+attritionNonLabeled$StockOptionLevel <- factor(attritionNonLabeled$StockOptionLevel)
+
+# Make predictions
+attritionPredictions <- predict(model, attritionNonLabeled)
+
+# merge predictions
+attritionNonLabeled$Attrition <- attritionPredictions
+
+# Write CSV
+write.csv(attritionNonLabeled, file = "./predictions/Attrition_Predictions.csv")
+```
+
 ### kNN - Numeric Predictors (Worst)
 k = 8 was determined as the best k value after running the kNN algorithm for 500 iterations between 1-30.
 ```{r}
@@ -158,16 +208,27 @@ knn <- knn(trainNum[,1:15], testNum[,1:15], trainNum$Attrition, prob = TRUE, k =
 confusionMatrix(table(knn, testNum$Attrition))
 ```
 
-### Random Forest ???
-```{r}
-
-```
 
 ## Salary (MonthlyIncome) Modeling
 
 ### Monthly Income Histogram
 ```{r}
 hist(data$MonthlyIncome)
+```
+
+### Top Three Salary Predictors
+```{r}
+#data %>% select('MonthlyIncome', 'JobLevel', 'JobRole', 'TotalWorkingYears') %>% ggpairs(mapping = ggplot2::aes(colour=MonthlyIncome))
+require(gridExtra)
+# JobLevel
+plot1 <- qplot(data$JobLevel, data$MonthlyIncome, data=data, colour=MonthlyIncome) + scale_colour_gradient(low="red", high="blue") + theme(legend.position="none")
+# JobRole
+plot2 <- qplot(data$JobRole, data$MonthlyIncome, data=data, colour=MonthlyIncome) + scale_colour_gradient(low="red", high="blue") + theme(legend.position="none")
+# TotalWorkingYears
+plot3 <- qplot(data$TotalWorkingYears, data$MonthlyIncome, data=data, colour=MonthlyIncome) + scale_colour_gradient(low="red", high="blue")
+
+# plot columns
+grid.arrange(plot1, plot2, plot3, ncol=2)
 ```
 
 ### Multiple Linear Regression
@@ -184,7 +245,7 @@ shortlistedVars <- shortlistedVars[!shortlistedVars %in% "(Intercept)"]  # remov
 print(shortlistedVars)
 ```
 
-#### Top Three Features - MLR
+#### Top Three Features - MLR (Best)
 ```{r}
 # The three predictors varified from step-wise algo.
 model2 <- lm(MonthlyIncome ~ JobLevel + JobRole + TotalWorkingYears, data = train)
@@ -207,4 +268,40 @@ abline(a=0,b=1)
 rmse(test$MonthlyIncome, model2.fit)
 ```
 
-### Random Forest
+```{r, include=FALSE}
+# import non-labeled dataset and export predictions
+salaryNonLabeled = read.csv('./data/CaseStudy2CompSet No Salary.csv', header = TRUE)
+
+# convert factors that were picked up as int
+salaryNonLabeled$EnvironmentSatisfaction <- factor(salaryNonLabeled$EnvironmentSatisfaction)
+salaryNonLabeled$JobInvolvement <- factor(salaryNonLabeled$JobInvolvement)
+salaryNonLabeled$JobLevel <- factor(salaryNonLabeled$JobLevel)
+salaryNonLabeled$JobSatisfaction <- factor(salaryNonLabeled$JobSatisfaction)
+salaryNonLabeled$PerformanceRating <- factor(salaryNonLabeled$PerformanceRating)
+salaryNonLabeled$RelationshipSatisfaction <- factor(salaryNonLabeled$RelationshipSatisfaction)
+salaryNonLabeled$WorkLifeBalance <- factor(salaryNonLabeled$WorkLifeBalance)
+salaryNonLabeled$StockOptionLevel <- factor(salaryNonLabeled$StockOptionLevel)
+
+# Make predictions
+salaryPredictions <- predict(model2, newdata = salaryNonLabeled)
+
+# merge predictions
+salaryNonLabeled$MonthlyIncome <- salaryPredictions
+
+# Write CSV
+write.csv(salaryNonLabeled, file = "./predictions/Salary_Predictions.csv")
+```
+
+#### All Features - MLR (Worst)
+```{r}
+# MLR with all predictors used
+model <- lm(MonthlyIncome ~ ., data = train)
+
+summary(model)
+
+# test predictions
+model.fit <- predict(model, newdata = test)
+
+# RSME
+rmse(test$MonthlyIncome, model.fit)
+```
