@@ -1,0 +1,210 @@
+---
+title: 'Case Study 2: Final Report'
+author: "Sterling Beason"
+date: "12/5/2019"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(GGally)
+library(ggplot2)
+library(corrplot)
+library(Hmisc)
+library(randomForest)
+library(earth) # identify predictors
+library(class)
+library(caret)
+library(e1071)
+library(Metrics) # rsme
+```
+
+## Executive Summary
+
+## Dataset
+870 observations, 36 features
+
+| Name | - | Used |
+|-|-|-|
+| Age |  | yes |
+| Attrition |  | yes |
+| BusinessTravel |  | yes |
+| DailyRate |  | yes |
+| Department |  | yes |
+| DistanceFromHome |  | yes |
+| Education |  | yes |
+| EducationField |  | yes |
+| EmployeeNumber |  | no |
+| EnvironmentSatisfaction |  | yes |
+| Gender |  | yes |
+| HourlyRate |  | yes |
+| ID |  | no |
+| JobInvolvement |  | yes |
+| JobLevel |  | yes |
+| JobRole |  | yes |
+| JobSatisfaction |  | yes |
+| MaritalStatus |  | yes |
+| MonthlyIncome |  | yes |
+| MonthlyRate |  | yes |
+| NumCompaniesWorked |  | yes |
+| Over18 |  | no |
+| OverTime |  | yes |
+| PercentSalaryHike |  | yes |
+| PerformanceRating |  | yes |
+| RelationshipSatisfaction |  | yes |
+| StandardHours |  | no |
+| StockOptionLevel |  | yes |
+| TotalWorkingYears |  | yes |
+| TrainingTimesLastYear |  | yes |
+| WorkLifeBalance |  | yes |
+| YearsAtCompany |  | yes |
+| YearsInCurrentRole |  | yes |
+| YearsSinceLastPromotion |  | yes |
+| YearsWithCurrManager |  | yes |
+
+
+## Exploratory Data Analysis (EDA)
+```{r}
+# import data
+dataRaw = read.csv('./data/CaseStudy2-data.csv', header = TRUE)
+
+# Remove columns
+# Non-informative columns: ID, EmployeeNumber
+# Useless columns with one value: EmployeeCount, Over18, StandardHours
+data = dataRaw %>% select(-c('ID', 'EmployeeNumber', 'EmployeeCount', 'Over18', 'StandardHours'))
+
+# convert factors that were picked up as int
+data$EnvironmentSatisfaction <- factor(data$EnvironmentSatisfaction)
+data$JobInvolvement <- factor(data$JobInvolvement)
+data$JobLevel <- factor(data$JobLevel)
+data$JobSatisfaction <- factor(data$JobSatisfaction)
+data$PerformanceRating <- factor(data$PerformanceRating)
+data$RelationshipSatisfaction <- factor(data$RelationshipSatisfaction)
+data$WorkLifeBalance <- factor(data$WorkLifeBalance)
+data$StockOptionLevel <- factor(data$StockOptionLevel)
+
+# Create split copy of data by factor and numeric
+categoricalCols = data %>% select_if(is.factor)
+continuousCols = data %>% select_if(is.numeric)
+```
+
+### Visualize numeric correlations
+```{r}
+continuousCols.cor = cor(continuousCols)
+corrplot(continuousCols.cor)
+```
+
+### Identify Top Three Predictors
+#### Within All Predictors
+```{r}
+mars <- earth(Attrition ~ ., data = data)
+evimp <- evimp(mars)
+
+evimp[1:3, c(3,4,6)]
+```
+
+#### Within Numeric Predictors
+```{r, message = F}
+continuousColsWAttrition = continuousCols
+continuousColsWAttrition$Attrition <- data$Attrition
+
+mars <- earth(Attrition ~ ., data = continuousColsWAttrition)
+evimp <- evimp(mars)
+
+evimp[1:3, c(3,4,6)]
+
+data %>% select('TotalWorkingYears', 'NumCompaniesWorked', 'YearsSinceLastPromotion', 'Attrition') %>% ggpairs(mapping = ggplot2::aes(colour=Attrition))
+```
+
+## Attrition Modeling
+
+### Data Partitioning (Train/Test)
+```{r}
+# split data into training and testing
+trainInd = createDataPartition(data$Attrition, times = 1, p = 0.7, list = FALSE)
+
+train = data[trainInd,]
+test = data[-trainInd,]
+```
+
+### Naive Bayes - All Predictors (Best)
+```{r}
+# Naive Bayes model
+model <- naiveBayes(Attrition ~ ., data = train)
+
+# Make predictions
+pred <- predict(model, test)
+
+# Confusion Matrix
+confusionMatrix(table(pred, test$Attrition))
+```
+
+### kNN - Numeric Predictors (Worst)
+k = 8 was determined as the best k value after running the kNN algorithm for 500 iterations between 1-30.
+```{r}
+# Filter data for numeric columns
+trainNum <- train %>% select_if(is.numeric)
+testNum <- test %>% select_if(is.numeric)
+
+# Append 'Attrition' column
+trainNum$Attrition <- train$Attrition
+testNum$Attrition <- test$Attrition
+
+# Run the algorithm
+knn <- knn(trainNum[,1:15], testNum[,1:15], trainNum$Attrition, prob = TRUE, k = 8)
+# Confusion Matrix
+confusionMatrix(table(knn, testNum$Attrition))
+```
+
+### Random Forest ???
+```{r}
+
+```
+
+## Salary (MonthlyIncome) Modeling
+
+### Monthly Income Histogram
+```{r}
+hist(data$MonthlyIncome)
+```
+
+### Multiple Linear Regression
+
+#### Step-wise Regression - Feature Selection
+```{r}
+# Adapted Source: http://r-statistics.co/Variable-Selection-and-Importance-With-R.html
+
+base.mod <- lm(MonthlyIncome ~ 1 , data= data)  # base intercept only model
+all.mod <- lm(MonthlyIncome ~ . , data= data) # full model with all predictors
+stepMod <- step(base.mod, scope = list(lower = base.mod, upper = all.mod), direction = "both", trace = 0, steps = 1000)  # perform step-wise algorithm
+shortlistedVars <- names(unlist(stepMod[[1]])) # get the shortlisted variable.
+shortlistedVars <- shortlistedVars[!shortlistedVars %in% "(Intercept)"]  # remove intercept 
+print(shortlistedVars)
+```
+
+#### Top Three Features - MLR
+```{r}
+# The three predictors varified from step-wise algo.
+model2 <- lm(MonthlyIncome ~ JobLevel + JobRole + TotalWorkingYears, data = train)
+
+summary(model2)
+
+# residual histogram
+hist(model2$residuals, col = "blue", main = "Histogram of Residuals")
+plot(model2$fitted.values,model2$residuals, main = "Plot of Residuals v. Fitted Values")
+abline(a=0, b=0)
+
+# Make predictions
+model2.fit <- predict(model2, newdata = test)
+
+# Plot actual vs predicted
+plot(model2.fit,test$MonthlyIncome, xlab="predicted", ylab="actual")
+abline(a=0,b=1)
+
+#RSME from Metrics:: (https://www.rdocumentation.org/packages/Metrics/versions/0.1.4/topics/rmse)
+rmse(test$MonthlyIncome, model2.fit)
+```
+
+### Random Forest
